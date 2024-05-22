@@ -1,20 +1,35 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:trabalho_calendario/dao/calendario_dao.dart';
+import 'package:trabalho_calendario/model/calendario.dart';
 
 class MyPage extends StatefulWidget {
-
   @override
   _MyPageState createState() => _MyPageState();
 }
 
 class _MyPageState extends State<MyPage> {
-
   // Variáveis de controle do estado do aplicativo
   String _mesSelecionado = 'Janeiro'; // Mês inicial selecionado
   String _anoSelecionado = '2024'; // Ano inicial selecionado
   String _anoSelecionadoDropdown = '2024'; // Ano inicial selecionado na caixa de seleção do ano
   late List<String> _diasDoMes; // Lista para armazenar os dias do mês selecionado
   late Map<String, String> _descricoesDosDias; // Mapa para armazenar as descrições de cada dia
+  final _dao = CalendarioDao();
+
+  var _carregando = false;
+
+  void _atualizarLista() async {
+    setState(() {
+      _carregando = true;
+    });
+
+    final lista = await _dao.Lista();
+    setState(() {
+      _descricoesDosDias = {for (var item in lista) item.dia!: item.descricao!};
+      _carregando = false;
+    });
+  }
 
   // Variáveis de controle do mouse e do dia selecionado ao passar o mouse
   bool _isMouseOver = false; // Flag para indicar se o mouse está sobre um dia
@@ -25,6 +40,7 @@ class _MyPageState extends State<MyPage> {
     super.initState();
     _diasDoMes = _calcularDiasDoMes(_mesSelecionado); // Inicializa os dias do mês inicial
     _descricoesDosDias = {}; // Inicializa o mapa vazio para descrições
+    _atualizarLista(); // Carrega as descrições dos dias do banco de dados
   }
 
   @override
@@ -223,14 +239,17 @@ class _MyPageState extends State<MyPage> {
     );
 
     if (novaDescricao != null) {
+      final _calendario = Calendario(descricao: novaDescricao, dia: diaSelecionado);
+      await _dao.salvar(_calendario);
       setState(() {
         _descricoesDosDias[diaSelecionado] = novaDescricao; // Atualiza a descrição do dia no mapa
       });
     }
   }
 
-  void _mostrarSelecaoMes(BuildContext context) {
-    showDialog(
+  Future<void> _mostrarSelecaoMes(BuildContext context) async {
+    // Mostra um diálogo para selecionar o mês e o ano
+    await showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
@@ -240,83 +259,62 @@ class _MyPageState extends State<MyPage> {
             children: [
               DropdownButton<String>(
                 value: _mesSelecionado,
-                onChanged: (String? novoValor) {
-                  if (novoValor != null) {
-                    setState(() {
-                      _mesSelecionado = novoValor; // Atualiza o mês selecionado
-                      _diasDoMes = _calcularDiasDoMes(_mesSelecionado); // Calcula os dias do novo mês
-                    });
-                  }
-                },
                 items: <String>[
-                  'Janeiro',
-                  'Fevereiro',
-                  'Março',
-                  'Abril',
-                  'Maio',
-                  'Junho',
-                  'Julho',
-                  'Agosto',
-                  'Setembro',
-                  'Outubro',
-                  'Novembro',
-                  'Dezembro'
+                  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
                 ].map<DropdownMenuItem<String>>((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
                     child: Text(value),
                   );
                 }).toList(),
+                onChanged: (String? novoMes) {
+                  setState(() {
+                    if (novoMes != null) {
+                      _mesSelecionado = novoMes; // Atualiza o mês selecionado
+                    }
+                  });
+                },
               ),
-              SizedBox(height: 8),
               DropdownButton<String>(
                 value: _anoSelecionadoDropdown,
-                onChanged: (String? novoValor) {
-                  if (novoValor != null) {
-                    setState(() {
-                      _anoSelecionadoDropdown = novoValor; // Atualiza o ano selecionado na caixa de seleção do ano
-                      _anoSelecionado = novoValor; // Atualiza o ano selecionado
-                      _diasDoMes = _calcularDiasDoMes(_mesSelecionado); // Calcula os dias do mês atualizado
-                    });
-                  }
-                },
-                items: <String>[
-                  '2022',
-                  '2023',
-                  '2024',
-                  '2025',
-                  '2026',
-                  '2027',
-                  '2028',
-                  '2029',
-                  '2030'
-                ].map<DropdownMenuItem<String>>((String value) {
+                items: List.generate(10, (index) {
+                  int ano = DateTime.now().year + index - 5;
                   return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
+                    value: ano.toString(),
+                    child: Text(ano.toString()),
                   );
                 }).toList(),
+                onChanged: (String? novoAno) {
+                  setState(() {
+                    if (novoAno != null) {
+                      _anoSelecionadoDropdown = novoAno; // Atualiza o ano selecionado na caixa de seleção
+                    }
+                  });
+                },
               ),
             ],
           ),
-          actions: <Widget>[
+          actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context); // Fecha o diálogo de seleção de mês e ano
+                Navigator.pop(context); // Fecha o diálogo sem fazer nada
               },
               child: Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _mesSelecionado = _mesSelecionado; // Atualiza o mês selecionado
+                  _anoSelecionado = _anoSelecionadoDropdown; // Atualiza o ano selecionado
+                  _diasDoMes = _calcularDiasDoMes(_mesSelecionado); // Recalcula os dias do mês
+                });
+                Navigator.pop(context); // Fecha o diálogo
+              },
+              child: Text('Selecionar'),
             ),
           ],
         );
       },
     );
   }
-}
-
-void main() {
-  // Função principal que inicia o aplicativo
-  runApp(MaterialApp(
-    title: 'Calendário', // Título do aplicativo
-    home: MyPage(), // Define a página inicial como MyPage
-  ));
 }
