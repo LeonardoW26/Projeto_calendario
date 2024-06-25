@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:trabalho_calendario/dao/calendario_dao.dart';
 import 'package:trabalho_calendario/model/calendario.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 
 class MyPage extends StatefulWidget {
   @override
@@ -67,6 +69,14 @@ class _MyPageState extends State<MyPage> {
       title: Text('Calendário - $_mesSelecionado $_anoSelecionado'), // Título com mês e ano selecionados
       centerTitle: false,
       actions: [
+        IconButton(
+          onPressed: _obterLocalizacaoAtual,
+          icon: Icon(Icons.location_on), // Ícone para obter localização
+        ),
+        IconButton(
+          onPressed: _mostrarRegistrosLocalizacao,
+          icon: Icon(Icons.list), // Ícone para mostrar registros de localização
+        ),
         IconButton(
           onPressed: () {
             _mostrarSelecaoMes(context); // Função para mostrar a seleção de mês e ano
@@ -311,6 +321,121 @@ class _MyPageState extends State<MyPage> {
                 Navigator.pop(context); // Fecha o diálogo
               },
               child: Text('Selecionar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Método para obter a localização atual e salvar no banco de dados
+  void _obterLocalizacaoAtual() async {
+    bool servicoHabilitado = await _servicoHabilitado();
+    if (!servicoHabilitado) return;
+
+    bool permissoesPermitidas = await _permissoesPermitidas();
+    if (!permissoesPermitidas) return;
+
+    Position position = await Geolocator.getCurrentPosition();
+    if (position == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Nenhuma localização encontrada!'),
+      ));
+    } else {
+      final _calendario = Calendario(
+        descricao: 'Localização obtida',
+        dia: DateFormat('dd/MM/yyyy').format(DateTime.now()),
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      await _dao.salvar(_calendario);
+      _atualizarLista();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Latitude: ${position.latitude}, Longitude: ${position.longitude}'),
+      ));
+    }
+  }
+
+  Future<bool> _permissoesPermitidas() async {
+    LocationPermission permissao = await Geolocator.checkPermission();
+
+    if (permissao == LocationPermission.denied) {
+      permissao = await Geolocator.requestPermission();
+      if (permissao == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Não será possível usar o recurso por falta de permissão'),
+        ));
+        return false;
+      }
+    }
+
+    if (permissao == LocationPermission.deniedForever) {
+      await _mostrarDialogMensagem(
+        'Para utilizar esse recurso, você deverá acessar as configurações do app e permitir a utilização do serviço de localização',
+      );
+      Geolocator.openAppSettings();
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _servicoHabilitado() async {
+    bool servicoHabilitado = await Geolocator.isLocationServiceEnabled();
+
+    if (!servicoHabilitado) {
+      await _mostrarDialogMensagem(
+        'Para utilizar esse serviço, você deverá habilitar o serviço de localização do dispositivo',
+      );
+      Geolocator.openLocationSettings();
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _mostrarDialogMensagem(String mensagem) async {
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Atenção'),
+        content: Text(mensagem),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('OK'),
+          )
+        ],
+      ),
+    );
+  }
+
+  // Método para mostrar registros de localização
+  void _mostrarRegistrosLocalizacao() async {
+    final lista = await _dao.Lista();
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Registros de Localização'),
+          content: Container(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: lista.length,
+              itemBuilder: (BuildContext context, int index) {
+                final calendario = lista[index];
+                return ListTile(
+                  title: Text('Dia: ${calendario.dia}'),
+                  subtitle: Text('Latitude: ${calendario.latitude}, Longitude: ${calendario.longitude}'),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text('Fechar'),
             ),
           ],
         );
